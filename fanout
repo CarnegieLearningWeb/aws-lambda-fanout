@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # AWS Lambda Fan-Out Utility
 # 
 # Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
