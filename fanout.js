@@ -31,7 +31,7 @@ var async = require('async');
 
 // Service configuration
 var config = {
-	parallelTargets    : 2,    // Number of parallel targets for fan-out destination
+	parallelTargets    : 8,    // Number of parallel targets for fan-out destination
 	parallelPosters    : 2,    // Number of parallel posters for fan-out destination
 	debug              : false // Activate debug messages
 };
