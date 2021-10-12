@@ -25,7 +25,6 @@
 // Modules
 var transformation = require('./lib/transformation.js');
 var configuration = require('./lib/configuration.js');
-var statistics = require('./lib/statistics.js');
 var services = require('./lib/services.js');
 var async = require('async');
 
@@ -36,7 +35,6 @@ var config = {
 	debug              : false // Activate debug messages
 };
 configuration.configure(config);
-statistics.configure(config);
 services.configure(config);
 
 //********
@@ -212,10 +210,6 @@ function fanOut(eventSourceARN, event, context, targets, callback) {
 //********
 // Lambda entry point. Loads the configuration and does the fanOut
 exports.handler = function(event, context) {
-  var stats = statistics.create();
-  stats.register('sources', 'Sources', 'counter', 'Count'); // source, destination
-  stats.register('records', 'Records', 'counter', 'Count'); // source, destination
-
   if (config.debug) {
     console.log("Starting process of " + event.Records.length + " events");
   }
@@ -225,14 +219,10 @@ exports.handler = function(event, context) {
   event.Records.forEach(function(record) {
     var eventSourceARN = record.eventSourceARN || record.TopicArn;
     if(! sources.hasOwnProperty(eventSourceARN)) {
-      stats.addTick('sources');
-      stats.register('records#' + eventSourceARN, 'Records', 'counter', 'Count', eventSourceARN);
-      stats.register('targets#' + eventSourceARN, 'Targets', 'counter', 'Count', eventSourceARN);
       sources[eventSourceARN] = { Records: [record] };
     } else {
       sources[eventSourceARN].Records.push(record);
     }
-    stats.addTick('records#' + eventSourceARN);
   });
 
   var eventSourceARNs = Object.keys(sources);
@@ -247,13 +237,11 @@ exports.handler = function(event, context) {
   });
 
   queue.drain = function() {
-    stats.publish(function() {
       if(hasError) {
         context.fail('Some processing errors occured, check logs'); // ERROR with message
       } else {
         context.succeed("Done processing all subscribers for this event, no errors detected"); // SUCCESS with message
       }
-    });
   };
 
   eventSourceARNs.forEach(function(eventSourceARN) {
