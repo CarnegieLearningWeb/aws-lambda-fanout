@@ -43,7 +43,7 @@ services.configure(config);
 // This function posts data to the specified service
 //  If the target is marked as 'collapse', records will
 //  be grouped in a single payload before being sent
-function postToService(serviceReference, target, records, stats, callback) {
+function postToService(serviceReference, target, records, callback) {
 	var parallelPosters = target.parallel ? config.parallelPosters : 1;
 	var errors = [];
   var definition = serviceReference.definition;
@@ -118,7 +118,7 @@ function postToService(serviceReference, target, records, stats, callback) {
 
 //********
 // This function transfers an entire event to the underlying service
-function interceptService(serviceReference, target, event, stats, callback) {
+function interceptService(serviceReference, target, event, callback) {
   serviceReference.definition.intercept(serviceReference.service, target, event, function(err) {
     serviceReference.dispose();
     callback(err);
@@ -145,14 +145,14 @@ function sendMessages(eventSourceARN, target, event, stats, callback) {
           if(target.passthrough) {
             transformation.transformRecords(event.Records, target, function(err, transformedRecords) {
               transformedRecords.forEach(function(record) { record.data = record.data.toString('base64') });
-              interceptService(serviceReference, target, { Records: transformedRecords }, stats, done);
+              interceptService(serviceReference, target, { Records: transformedRecords }, done);
             });
           } else {
-            interceptService(serviceReference, target, event, stats, done);
+            interceptService(serviceReference, target, event, done);
           }
         } else if (definition.send) {
           transformation.transformRecords(event.Records, target, function(err, transformedRecords) {
-            postToService(serviceReference, target, transformedRecords, stats, done);
+            postToService(serviceReference, target, transformedRecords, done);
           });
         } else {
           done(new Error("Invalid module '" + target.type + "', it must export either an 'intercept' or a 'send' method"));
