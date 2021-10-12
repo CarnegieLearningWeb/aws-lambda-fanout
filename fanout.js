@@ -127,15 +127,12 @@ function interceptService(serviceReference, target, event, callback) {
 
 //********
 // This function manages the messages for a target
-function sendMessages(eventSourceARN, target, event, stats, callback) {
+function sendMessages(eventSourceARN, target, event, callback) {
   if(config.debug) {
     console.log("Processing target '" + target.id + "'");
   }
 
   var start = Date.now();
-  stats.addTick('targets#' + eventSourceARN);
-  stats.register('records#' + eventSourceARN + '#' + target.destination, 'Records', 'stats', 'Count', eventSourceARN, target.destination);
-  stats.addValue('records#' + eventSourceARN + '#' + target.destination, event.Records.length);
 
   async.waterfall([
       function(done) { services.get(target, done); },
@@ -175,7 +172,7 @@ function sendMessages(eventSourceARN, target, event, stats, callback) {
 
 //********
 // This function reads a set of records from Amazon Kinesis or Amazon DynamoDB Streams and sends it to all subscribed parties
-function fanOut(eventSourceARN, event, context, targets, stats, callback) {
+function fanOut(eventSourceARN, event, context, targets, callback) {
   if(targets.length === 0) {
     console.log("No output subscribers found for this event");
     callback(null);
@@ -186,7 +183,7 @@ function fanOut(eventSourceARN, event, context, targets, stats, callback) {
   var hasErrors    = false;
 
   var queue = async.queue(function(target, done) {
-    sendMessages(eventSourceARN, target, event, stats, done);
+    sendMessages(eventSourceARN, target, event, done);
   }, config.parallelTargets);
 
   queue.drain = function() {
@@ -244,7 +241,7 @@ exports.handler = function(event, context) {
   var queue = async.queue(function(eventSourceARN, callback) {
     async.waterfall([
         function(done) {  configuration.get(eventSourceARN, services.definitions, done); },
-        function(targets, done) {  fanOut(eventSourceARN, sources[eventSourceARN], context, targets, stats, done); }
+        function(targets, done) {  fanOut(eventSourceARN, sources[eventSourceARN], context, targets, done); }
       ],
       callback);
   });
