@@ -25,7 +25,6 @@
 // Modules
 var transformation = require('./lib/transformation.js');
 var configuration = require('./lib/configuration.js');
-var statistics = require('./lib/statistics.js');
 var services = require('./lib/services.js');
 var async = require('async');
 
@@ -36,14 +35,13 @@ var config = {
 	debug              : false // Activate debug messages
 };
 configuration.configure(config);
-statistics.configure(config);
 services.configure(config);
 
 //********
 // This function posts data to the specified service
 //  If the target is marked as 'collapse', records will
 //  be grouped in a single payload before being sent
-function postToService(serviceReference, target, records, stats, callback) {
+function postToService(serviceReference, target, records, callback) {
 	var parallelPosters = target.parallel ? config.parallelPosters : 1;
 	var errors = [];
   var definition = serviceReference.definition;
@@ -118,7 +116,7 @@ function postToService(serviceReference, target, records, stats, callback) {
 
 //********
 // This function transfers an entire event to the underlying service
-function interceptService(serviceReference, target, event, stats, callback) {
+function interceptService(serviceReference, target, event, callback) {
   serviceReference.definition.intercept(serviceReference.service, target, event, function(err) {
     serviceReference.dispose();
     callback(err);
@@ -127,15 +125,12 @@ function interceptService(serviceReference, target, event, stats, callback) {
 
 //********
 // This function manages the messages for a target
-function sendMessages(eventSourceARN, target, event, stats, callback) {
+function sendMessages(eventSourceARN, target, event, callback) {
   if(config.debug) {
     console.log("Processing target '" + target.id + "'");
   }
 
   var start = Date.now();
-  stats.addTick('targets#' + eventSourceARN);
-  stats.register('records#' + eventSourceARN + '#' + target.destination, 'Records', 'stats', 'Count', eventSourceARN, target.destination);
-  stats.addValue('records#' + eventSourceARN + '#' + target.destination, event.Records.length);
 
   async.waterfall([
       function(done) { services.get(target, done); },
@@ -145,14 +140,14 @@ function sendMessages(eventSourceARN, target, event, stats, callback) {
           if(target.passthrough) {
             transformation.transformRecords(event.Records, target, function(err, transformedRecords) {
               transformedRecords.forEach(function(record) { record.data = record.data.toString('base64') });
-              interceptService(serviceReference, target, { Records: transformedRecords }, stats, done);
+              interceptService(serviceReference, target, { Records: transformedRecords }, done);
             });
           } else {
-            interceptService(serviceReference, target, event, stats, done);
+            interceptService(serviceReference, target, event, done);
           }
         } else if (definition.send) {
           transformation.transformRecords(event.Records, target, function(err, transformedRecords) {
-            postToService(serviceReference, target, transformedRecords, stats, done);
+            postToService(serviceReference, target, transformedRecords, done);
           });
         } else {
           done(new Error("Invalid module '" + target.type + "', it must export either an 'intercept' or a 'send' method"));
@@ -175,7 +170,7 @@ function sendMessages(eventSourceARN, target, event, stats, callback) {
 
 //********
 // This function reads a set of records from Amazon Kinesis or Amazon DynamoDB Streams and sends it to all subscribed parties
-function fanOut(eventSourceARN, event, context, targets, stats, callback) {
+function fanOut(eventSourceARN, event, context, targets, callback) {
   if(targets.length === 0) {
     console.log("No output subscribers found for this event");
     callback(null);
@@ -186,7 +181,7 @@ function fanOut(eventSourceARN, event, context, targets, stats, callback) {
   var hasErrors    = false;
 
   var queue = async.queue(function(target, done) {
-    sendMessages(eventSourceARN, target, event, stats, done);
+    sendMessages(eventSourceARN, target, event, done);
   }, config.parallelTargets);
 
   queue.drain = function() {
@@ -215,10 +210,6 @@ function fanOut(eventSourceARN, event, context, targets, stats, callback) {
 //********
 // Lambda entry point. Loads the configuration and does the fanOut
 exports.handler = function(event, context) {
-  var stats = statistics.create();
-  stats.register('sources', 'Sources', 'counter', 'Count'); // source, destination
-  stats.register('records', 'Records', 'counter', 'Count'); // source, destination
-
   if (config.debug) {
     console.log("Starting process of " + event.Records.length + " events");
   }
@@ -228,14 +219,10 @@ exports.handler = function(event, context) {
   event.Records.forEach(function(record) {
     var eventSourceARN = record.eventSourceARN || record.TopicArn;
     if(! sources.hasOwnProperty(eventSourceARN)) {
-      stats.addTick('sources');
-      stats.register('records#' + eventSourceARN, 'Records', 'counter', 'Count', eventSourceARN);
-      stats.register('targets#' + eventSourceARN, 'Targets', 'counter', 'Count', eventSourceARN);
       sources[eventSourceARN] = { Records: [record] };
     } else {
       sources[eventSourceARN].Records.push(record);
     }
-    stats.addTick('records#' + eventSourceARN);
   });
 
   var eventSourceARNs = Object.keys(sources);
@@ -244,19 +231,17 @@ exports.handler = function(event, context) {
   var queue = async.queue(function(eventSourceARN, callback) {
     async.waterfall([
         function(done) {  configuration.get(eventSourceARN, services.definitions, done); },
-        function(targets, done) {  fanOut(eventSourceARN, sources[eventSourceARN], context, targets, stats, done); }
+        function(targets, done) {  fanOut(eventSourceARN, sources[eventSourceARN], context, targets, done); }
       ],
       callback);
   });
 
   queue.drain = function() {
-    stats.publish(function() {
       if(hasError) {
         context.fail('Some processing errors occured, check logs'); // ERROR with message
       } else {
         context.succeed("Done processing all subscribers for this event, no errors detected"); // SUCCESS with message
       }
-    });
   };
 
   eventSourceARNs.forEach(function(eventSourceARN) {
